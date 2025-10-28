@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Farmacia Bolaños - Sistema de Conteo</title>
+    <link rel="icon" type="image/png" href="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/logo.png-2x2opp5b9KfBtgW42SaJDCEtCPw0a3.png">
+    <link rel="apple-touch-icon" href="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/logo.png-2x2opp5b9KfBtgW42SaJDCEtCPw0a3.png">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Landing Page -->
+    <div id="landing-page" class="page active">
+        <div class="landing-container">
+            <!-- Updated to use BOLANIOS.png logo -->
+            <img src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/BOLANIOS-4K3fARMfPjxpnCKScWdGgdosCWWvq6.png" alt="Farmacia Bolaños" class="main-logo">
+            <!-- Updated title to "FARMACIA BOLAÑOS INVENTARIO" -->
+            <h1 class="welcome-text">FARMACIA BOLAÑOS INVENTARIO</h1>
+            <button id="start-count-btn" class="primary-btn">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                </svg>
+                INICIAR CONTEO
+            </button>
+        </div>
+    </div>
+
+    <!-- Counting Form Page -->
+    <div id="form-page" class="page">
+        <header class="app-header">
+            <button id="back-btn" class="back-btn" title="Volver">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 12H5M12 19l-7-7 7-7"/>
+                </svg>
+            </button>
+            <!-- Updated to use circular logo from logo.png.png -->
+            <img src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/logo.png-2x2opp5b9KfBtgW42SaJDCEtCPw0a3.png" alt="Logo" class="header-logo">
+            <div class="header-info">
+                <h2>Conteo de Inventario</h2>
+                <div class="time-info">
+                    <span id="count-id" class="count-id"></span>
+                    <span id="start-time" class="start-time"></span>
+                </div>
+            </div>
+        </header>
+
+        <main class="form-container">
+            <!-- Search Section -->
+            <div class="search-section">
+                <div class="search-box">
+                    <svg class="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"/>
+                        <path d="m21 21-4.35-4.35"/>
+                    </svg>
+                    <input 
+                        type="text" 
+                        id="search-input" 
+                        placeholder="Buscar por código o nombre del producto..."
+                        autocomplete="off"
+                    >
+                    <button id="clear-search" class="clear-btn" style="display: none;">×</button>
+                </div>
+            </div>
+
+            <!-- Search results moved outside search section for better scrolling -->
+            <div id="search-results" class="search-results"></div>
+
+            <!-- Product Form Section -->
+            <div id="product-form" class="product-form" style="display: none;">
+                <div class="form-header">
+                    <h3>Detalles del Producto</h3>
+                    <button id="close-form" class="icon-btn">×</button>
+                </div>
+
+                <div class="product-info">
+                    <div class="info-row">
+                        <label>Código:</label>
+                        <span id="product-code" class="info-value"></span>
+                    </div>
+                    <div class="info-row">
+                        <label>Producto:</label>
+                        <span id="product-name" class="info-value"></span>
+                    </div>
+                    <div class="info-row highlight">
+                        <label>Existencia Actual:</label>
+                        <span id="current-stock" class="info-value stock-value"></span>
+                    </div>
+                </div>
+
+                <form id="count-form">
+                    <div class="form-group">
+                        <label for="physical-count">Cantidad Física (Conteo Actual) *</label>
+                        <input 
+                            type="number" 
+                            id="physical-count" 
+                            min="0" 
+                            step="1" 
+                            required
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label for="location">Ubicación *</label>
+                        <input 
+                            type="text" 
+                            id="location" 
+                            placeholder="Ej: Estante A3, Vitrina 2, etc."
+                            required
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label for="observations">Observaciones</label>
+                        <textarea 
+                            id="observations" 
+                            rows="3"
+                            placeholder="Comentarios adicionales (opcional)"
+                        ></textarea>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="button" id="cancel-btn" class="secondary-btn">Cancelar</button>
+                        <button type="submit" id="submit-btn" class="primary-btn">Enviar Conteo</button>
+                    </div>
+                </form>
+            </div>
+        </main>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-icon" id="modal-icon"></div>
+            <h3 id="modal-title"></h3>
+            <p id="modal-message"></p>
+            <div class="modal-actions">
+                <button id="modal-cancel" class="secondary-btn">No</button>
+                <button id="modal-confirm" class="primary-btn">Sí, continuar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
+
+    <script src="script.js"></script>
+</body>
+</html>
