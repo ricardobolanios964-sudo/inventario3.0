@@ -742,3 +742,42 @@ body {
   font-weight: 600;
   color: var(--primary-color);
 }
+
+/* Updated exit button to be elegant, teal, and top-left */
+.exit-btn-corner {
+    position: absolute;
+    top: 20px;
+    left: 20px; /* Moved to top-left */
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 20px;
+    background: rgba(255, 255, 255, 0.8);
+    border: 1px solid rgba(0, 95, 115, 0.2); /* Subtle teal border */
+    border-radius: 12px; /* Softer, modern radius */
+    color: var(--primary-color); /* Teal text */
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    z-index: 100;
+    backdrop-filter: blur(8px);
+}
+
+.exit-btn-corner:hover {
+    background: var(--primary-color);
+    color: #ffffff;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0, 95, 115, 0.2);
+    border-color: var(--primary-color);
+}
+
+.exit-btn-corner svg {
+    transition: transform 0.3s ease;
+    stroke-width: 2;
+}
+
+.exit-btn-corner:hover svg {
+    transform: translateX(-3px); /* Arrow points back/left on hover */
+}
