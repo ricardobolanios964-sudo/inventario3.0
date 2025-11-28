@@ -211,58 +211,49 @@ async function handleViewHistory(e) {
 function findProductHistory(code) {
   const normalizedCode = code.toString().trim().toLowerCase()
 
-  const codigosDisponibles = pedidosData.slice(0, 10).map((item) => getPedidoCodigo(item))
-  console.log("[v0] Primeros 10 códigos en pedidos:", codigosDisponibles)
-
   return pedidosData
     .filter((item) => {
       const itemCode = getPedidoCodigo(item).toString().trim().toLowerCase()
       return itemCode === normalizedCode
     })
     .sort((a, b) => {
-      const fechaA = getPedidoFecha(a) // Formato esperado: DD/MM/YYYY o similar
-      const fechaB = getPedidoFecha(b)
+      const fechaHoraA = getPedidoFechaHora(a)
+      const fechaHoraB = getPedidoFechaHora(b)
 
-      // Convertir fecha DD/MM/YYYY a formato comparable YYYYMMDD
-      const parseFecha = (fecha) => {
-        if (!fecha || fecha === "-") return 0
-        // Intentar diferentes formatos
-        const parts = fecha.split(/[/-]/)
-        if (parts.length === 3) {
-          // Asumir DD/MM/YYYY
-          const day = parts[0].padStart(2, "0")
-          const month = parts[1].padStart(2, "0")
-          const year = parts[2].length === 2 ? "20" + parts[2] : parts[2]
-          return Number.parseInt(year + month + day)
-        }
-        return 0
-      }
+      // Convertir el texto "Fecha y Hora" a un objeto Date real
+      const parseFechaHora = (fh) => {
+        if (!fh || fh === "-") return 0
 
-      const fechaNumA = parseFecha(fechaA)
-      const fechaNumB = parseFecha(fechaB)
-
-      // Primero comparar por fecha
-      if (fechaNumB !== fechaNumA) {
-        return fechaNumB - fechaNumA // Fecha más reciente primero
-      }
-
-      // Si las fechas son iguales, comparar por hora (columna INICIO o Fecha y Hora)
-      const horaA = getPedidoInicio(a) || getPedidoFechaHora(a)
-      const horaB = getPedidoInicio(b) || getPedidoFechaHora(b)
-
-      // Convertir hora HH:MM a minutos para comparar
-      const parseHora = (hora) => {
-        if (!hora || hora === "-") return 0
-        const match = hora.match(/(\d{1,2}):(\d{2})/)
+        // Detectar si viene como "DD/MM/YYYY HH:MM"
+        const match = fh.match(/(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\s+(\d{1,2}):(\d{2})/)
         if (match) {
-          return Number.parseInt(match[1]) * 60 + Number.parseInt(match[2])
+          const d = match[1].padStart(2, "0")
+          const m = match[2].padStart(2, "0")
+          const y = match[3].length === 2 ? "20" + match[3] : match[3]
+          const hh = match[4].padStart(2, "0")
+          const mm = match[5].padStart(2, "0")
+          return new Date(`${y}-${m}-${d}T${hh}:${mm}:00`).getTime()
         }
+
+        // Si solo viene la fecha sin hora (raro)
+        const matchDate = fh.match(/(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/)
+        if (matchDate) {
+          const d = matchDate[1].padStart(2, "0")
+          const m = matchDate[2].padStart(2, "0")
+          const y = matchDate[3].length === 2 ? "20" + matchDate[3] : matchDate[3]
+          return new Date(`${y}-${m}-${d}T00:00:00`).getTime()
+        }
+
         return 0
       }
 
-      return parseHora(horaB) - parseHora(horaA) // Hora más reciente primero
+      const tA = parseFechaHora(fechaHoraA)
+      const tB = parseFechaHora(fechaHoraB)
+
+      return tB - tA // Más reciente primero
     })
 }
+
 
 function displayProductHistory(code, history) {
   const historyContent = document.getElementById("history-content")
@@ -463,6 +454,7 @@ window.historyModule = {
   },
   isLoaded: () => isPedidosLoaded,
 }
+
 
 
 
