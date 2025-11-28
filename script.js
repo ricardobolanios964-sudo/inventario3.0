@@ -4,7 +4,7 @@ const CONFIG = {
     "https://docs.google.com/spreadsheets/d/e/2PACX-1vQFZUyjvlU7g4HUvzNfJOAJAbkEKnYwAeBnTeeiZEJrvU0_-VyTfQHHAIJqb1GO9WyBuN3TYlBmXEBG/pub?gid=1886672096&single=true&output=csv",
   appsScriptURL: "https://script.google.com/macros/s/AKfycbxvEqyEnzDDzX97mW5bkOweFUdbiA1fb1DhLuY7F9A-28cOHYdoHi0VLXK8uzB80Np_-w/exec", // Reemplaza esto con tu URL de Apps Script
   cacheKey: "farmacia_bolanos_inventory_cache",
-  cacheExpiry: 5 * 1000, // 5 minutes
+  cacheExpiry: 0, // 5 minutes
 }
 
 // State
@@ -669,6 +669,7 @@ function hideDataLoadingOverlay() {
     setTimeout(() => loadingOverlay.remove(), 300)
   }
 }
+
 
 
 
