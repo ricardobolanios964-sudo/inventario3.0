@@ -9,7 +9,7 @@ const HISTORY_CONFIG = {
   pedidosURL:
     "https://docs.google.com/spreadsheets/d/e/2PACX-1vQFZUyjvlU7g4HUvzNfJOAJAbkEKnYwAeBnTeeiZEJrvU0_-VyTfQHHAIJqb1GO9WyBuN3TYlBmXEBG/pub?gid=693750954&single=true&output=csv",
   cacheKey: "farmacia_bolanos_pedidos_cache",
-  cacheExpiry: 1000, // <-- REDUCIDO A 1 SEGUNDO PARA ACTUALIZACIÓN MÁS FRECUENTE
+  cacheExpiry: 0,
 }
 
 let pedidosData = []
@@ -76,20 +76,11 @@ async function loadPedidosData() {
 
   try {
     const cached = localStorage.getItem(HISTORY_CONFIG.cacheKey)
-    
-    // <-- MODIFICADO: Validar correctamente si el caché aún es válido
-    if (cached) {
-      try {
-        const { timestamp } = JSON.parse(cached)
-        if (Date.now() - timestamp < HISTORY_CONFIG.cacheExpiry) {
-          const { data } = JSON.parse(cached)
-          pedidosData = data
-          isPedidosLoaded = true
-          isLoadingPedidos = false
-          return
-        }
-      } catch (e) {
-        console.log("[v0] Caché inválido, recargando...")
+    if (cached && isPedidosLoaded) {
+      const { timestamp } = JSON.parse(cached)
+      if (Date.now() - timestamp < HISTORY_CONFIG.cacheExpiry) {
+        isLoadingPedidos = false
+        return
       }
     }
 
@@ -100,8 +91,8 @@ async function loadPedidosData() {
     console.log("[v0] CSV raw (primeras 500 chars):", csvText.substring(0, 500))
 
     pedidosData = parsePedidosCSV(csvText)
-    console.log("[v0] Pedidos cargados:", pedidosData.length)
 
+    console.log("[v0] Pedidos cargados:", pedidosData.length)
     if (pedidosData.length > 0) {
       console.log("[v0] Primer registro completo:", pedidosData[0])
       console.log("[v0] Columnas detectadas:", Object.keys(pedidosData[0]))
@@ -130,20 +121,16 @@ function parsePedidosCSV(csv) {
   console.log("[v0] Headers encontrados:", headers)
 
   const results = []
-
   for (let i = 1; i < lines.length; i++) {
     const values = parseCSVLine(lines[i])
     const obj = {}
-
     headers.forEach((header, idx) => {
       obj[header] = values[idx] ? values[idx].trim().replace(/"/g, "") : ""
     })
-
     // Filtrar filas vacías
     const codigo = obj[COLUMN_NAMES.CODIGO] || obj["CODIGO"]
     if (codigo && codigo.trim()) results.push(obj)
   }
-
   return results
 }
 
@@ -151,7 +138,6 @@ function parseCSVLine(line) {
   const result = []
   let current = ""
   let inQuotes = false
-
   for (let i = 0; i < line.length; i++) {
     const char = line[i]
     if (char === '"') inQuotes = !inQuotes
@@ -160,7 +146,6 @@ function parseCSVLine(line) {
       current = ""
     } else current += char
   }
-
   result.push(current)
   return result
 }
@@ -210,8 +195,9 @@ async function handleViewHistory(e) {
     `
   }
 
-  // <-- MODIFICADO: Forzar recarga de datos siempre
   isPedidosLoaded = false
+  localStorage.removeItem(HISTORY_CONFIG.cacheKey)
+
   await loadPedidosData()
 
   requestAnimationFrame(() => {
@@ -226,53 +212,55 @@ async function handleViewHistory(e) {
 
 function findProductHistory(code) {
   const normalizedCode = code.toString().trim().toLowerCase()
-  const codigosDisponibles = pedidosData.slice(0, 10).map((item) => getPedidoCodigo(item))
-
-  console.log("[v0] Primeros 10 códigos en pedidos:", codigosDisponibles)
 
   return pedidosData
-    .filter((item) => {
+    .filter(item => {
       const itemCode = getPedidoCodigo(item).toString().trim().toLowerCase()
       return itemCode === normalizedCode
     })
     .sort((a, b) => {
-      const fechaA = getPedidoFecha(a)
-      const fechaB = getPedidoFecha(b)
 
-      const parseFecha = (fecha) => {
-        if (!fecha || fecha === "-") return 0
-        const parts = fecha.split(/[/-]/)
-        if (parts.length === 3) {
-          const day = parts[0].padStart(2, "0")
-          const month = parts[1].padStart(2, "0")
-          const year = parts[2].length === 2 ? "20" + parts[2] : parts[2]
-          return Number.parseInt(year + month + day)
+      // 🔹 Primero intentamos obtener la columna "Fecha y Hora"
+      const fhA = getPedidoFechaHora(a)
+      const fhB = getPedidoFechaHora(b)
+
+      const toDateTime = (fh, fallbackFecha, fallbackHora) => {
+        // Si existe "Fecha y Hora"
+        if (fh && fh !== "-") {
+          const dt = new Date(fh.replace(/-/g, "/"))
+          if (!isNaN(dt.getTime())) return dt.getTime()
         }
-        return 0
-      }
 
-      const fechaNumA = parseFecha(fechaA)
-      const fechaNumB = parseFecha(fechaB)
+        // Si falla, usar FECHA + INICIO
+        const fecha = fallbackFecha || "-"
+        const hora = fallbackHora || "00:00"
 
-      if (fechaNumB !== fechaNumA) {
-        return fechaNumB - fechaNumA
-      }
-
-      const horaA = getPedidoInicio(a) || getPedidoFechaHora(a)
-      const horaB = getPedidoInicio(b) || getPedidoFechaHora(b)
-
-      const parseHora = (hora) => {
-        if (!hora || hora === "-") return 0
-        const match = hora.match(/(\d{1,2}):(\d{2})/)
-        if (match) {
-          return Number.parseInt(match[1]) * 60 + Number.parseInt(match[2])
+        if (fecha !== "-") {
+          const [d, m, y] = fecha.split(/[\/-]/)
+          const dateISO = `${y.length === 2 ? "20" + y : y}-${m}-${d} ${hora}`
+          const dt = new Date(dateISO)
+          if (!isNaN(dt.getTime())) return dt.getTime()
         }
-        return 0
+
+        return 0 // fallback final
       }
 
-      return parseHora(horaB) - parseHora(horaA)
+      const dateA = toDateTime(
+        fhA,
+        getPedidoFecha(a),
+        getPedidoInicio(a)
+      )
+
+      const dateB = toDateTime(
+        fhB,
+        getPedidoFecha(b),
+        getPedidoInicio(b)
+      )
+
+      return dateB - dateA // más reciente primero
     })
 }
+
 
 function displayProductHistory(code, history) {
   const historyContent = document.getElementById("history-content")
@@ -304,10 +292,12 @@ function displayProductHistory(code, history) {
       <h4 class="history-product-name">${productName}</h4>
       <p class="history-count">${history.length} registro${history.length > 1 ? "s" : ""} encontrado${history.length > 1 ? "s" : ""}</p>
     </div>
+
     <div class="history-last-record">
       <div class="history-last-header">
         <span class="history-last-badge">Último Registro</span>
       </div>
+      
       <!-- FECHA Y HORA destacada -->
       <div class="history-datetime">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -318,6 +308,7 @@ function displayProductHistory(code, history) {
         </svg>
         <span>${fechaHora}</span>
       </div>
+      
       <div class="history-last-grid">
         <div class="history-stat-card">
           <div class="history-stat-icon cantidad">
@@ -330,6 +321,7 @@ function displayProductHistory(code, history) {
             <span class="history-stat-label">Cantidad</span>
           </div>
         </div>
+
         <div class="history-stat-card">
           <div class="history-stat-icon despacho">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -344,6 +336,7 @@ function displayProductHistory(code, history) {
             <span class="history-stat-label">Despacho</span>
           </div>
         </div>
+
         <div class="history-stat-card">
           <div class="history-stat-icon sucursal">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -356,6 +349,7 @@ function displayProductHistory(code, history) {
             <span class="history-stat-label">Sucursal</span>
           </div>
         </div>
+
         <div class="history-stat-card">
           <div class="history-stat-icon laboratorio">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -368,6 +362,7 @@ function displayProductHistory(code, history) {
           </div>
         </div>
       </div>
+
       <div class="history-last-details">
         <div class="history-detail-row">
           <span class="history-detail-label">Solicitud</span>
@@ -401,13 +396,14 @@ function displayProductHistory(code, history) {
     </div>
   `
 
+  // Timeline solo si hay más de 1 registro
   if (history.length > 1) {
     html += `
       <div class="history-timeline-section">
         <h5 class="history-timeline-title">Registros Anteriores</h5>
         <div class="history-timeline">
     `
-
+    // Mostrar todos los registros en el timeline
     history.forEach((record, index) => {
       html += `
         <div class="history-timeline-item ${index === 0 ? "latest" : ""}">
@@ -425,7 +421,6 @@ function displayProductHistory(code, history) {
         </div>
       `
     })
-
     html += `</div></div>`
   }
 
@@ -448,11 +443,9 @@ function showHistoryToast(message, type = "info") {
   toast.id = "history-toast"
   toast.className = `history-toast ${type}`
   toast.textContent = message
-
   document.body.appendChild(toast)
 
   requestAnimationFrame(() => toast.classList.add("active"))
-
   setTimeout(() => {
     toast.classList.remove("active")
     setTimeout(() => toast.remove(), 200)
@@ -468,3 +461,4 @@ window.historyModule = {
   },
   isLoaded: () => isPedidosLoaded,
 }
+
