@@ -9,7 +9,7 @@ const HISTORY_CONFIG = {
   pedidosURL:
     "https://docs.google.com/spreadsheets/d/e/2PACX-1vQFZUyjvlU7g4HUvzNfJOAJAbkEKnYwAeBnTeeiZEJrvU0_-VyTfQHHAIJqb1GO9WyBuN3TYlBmXEBG/pub?gid=693750954&single=true&output=csv",
   cacheKey: "farmacia_bolanos_pedidos_cache",
-  cacheExpiry: 0,
+  cacheExpiry: 5 * 1000,
 }
 
 let pedidosData = []
@@ -196,8 +196,6 @@ async function handleViewHistory(e) {
   }
 
   isPedidosLoaded = false
-  localStorage.removeItem(HISTORY_CONFIG.cacheKey)
-
   await loadPedidosData()
 
   requestAnimationFrame(() => {
@@ -225,30 +223,20 @@ function findProductHistory(code) {
       const fechaA = getPedidoFecha(a) // Formato esperado: DD/MM/YYYY o similar
       const fechaB = getPedidoFecha(b)
 
-     const parseHora = (hora) => {
-  if (!hora || hora === "-") return 0
-
-  // Normalizar: quitar espacios y convertir a string
-  hora = hora.toString().trim()
-
-  // Caso: solo hora (ej. "8", "11", "16")
-  if (/^\d{1,2}$/.test(hora)) {
-    const h = Number.parseInt(hora)
-    return h * 60 // sin minutos
-  }
-
-  // Caso: HH:MM (ej. "08:30", "8:05")
-  const match = hora.match(/^(\d{1,2}):(\d{2})$/)
-  if (match) {
-    const h = Number.parseInt(match[1])
-    const m = Number.parseInt(match[2])
-    return h * 60 + m
-  }
-
-  // Cualquier otro formato → 0
-  return 0
-}
-
+      // Convertir fecha DD/MM/YYYY a formato comparable YYYYMMDD
+      const parseFecha = (fecha) => {
+        if (!fecha || fecha === "-") return 0
+        // Intentar diferentes formatos
+        const parts = fecha.split(/[/-]/)
+        if (parts.length === 3) {
+          // Asumir DD/MM/YYYY
+          const day = parts[0].padStart(2, "0")
+          const month = parts[1].padStart(2, "0")
+          const year = parts[2].length === 2 ? "20" + parts[2] : parts[2]
+          return Number.parseInt(year + month + day)
+        }
+        return 0
+      }
 
       const fechaNumA = parseFecha(fechaA)
       const fechaNumB = parseFecha(fechaB)
@@ -275,7 +263,6 @@ function findProductHistory(code) {
       return parseHora(horaB) - parseHora(horaA) // Hora más reciente primero
     })
 }
-
 
 function displayProductHistory(code, history) {
   const historyContent = document.getElementById("history-content")
@@ -476,5 +463,7 @@ window.historyModule = {
   },
   isLoaded: () => isPedidosLoaded,
 }
+
+
 
 
