@@ -2,12 +2,9 @@
 const CONFIG = {
   inventoryURL:
     "https://docs.google.com/spreadsheets/d/e/2PACX-1vQFZUyjvlU7g4HUvzNfJOAJAbkEKnYwAeBnTeeiZEJrvU0_-VyTfQHHAIJqb1GO9WyBuN3TYlBmXEBG/pub?gid=1886672096&single=true&output=csv",
-  appsScriptURL:
-    "https://script.google.com/macros/s/AKfycbxvEqyEnzDDzX97mW5bkOweFUdbiA1fb1DhLuY7F9A-28cOHYdoHi0VLXK8uzB80Np_-w/exec",
+  appsScriptURL: "https://script.google.com/macros/s/AKfycbxvEqyEnzDDzX97mW5bkOweFUdbiA1fb1DhLuY7F9A-28cOHYdoHi0VLXK8uzB80Np_-w/exec", // Reemplaza esto con tu URL de Apps Script
   cacheKey: "farmacia_bolanos_inventory_cache",
-  cacheVersionKey: "farmacia_bolanos_cache_version", // Added version key for detecting changes
-  cacheExpiry: 5 * 60 * 1000, // 5 minutes
-  checkUpdateInterval: 5 * 1000, // Check for changes every 30 seconds
+  cacheExpiry: 5 * 1000, // 5 minutes
 }
 
 // State
@@ -17,7 +14,6 @@ let countStartTime = null
 let productStartTime = null
 let countId = null
 let isDataLoaded = false
-let updateCheckInterval = null // Track interval to stop on unload
 
 // Column Mapping
 const columnMapping = {
@@ -48,69 +44,7 @@ document.addEventListener("DOMContentLoaded", () => {
     isDataLoaded = true
     console.log("[v0] Data loaded and ready")
   })
-
-  startCacheValidation()
 })
-
-function generateHash(content) {
-  let hash = 0
-  for (let i = 0; i < content.length; i++) {
-    const char = content.charCodeAt(i)
-    hash = (hash << 5) - hash + char
-    hash = hash & hash // Convert to 32bit integer
-  }
-  return Math.abs(hash).toString(36)
-}
-
-async function validateCacheVersion() {
-  try {
-    const response = await fetch(CONFIG.inventoryURL)
-    const csvText = await response.text()
-
-    // Generate hash of current data
-    const currentHash = generateHash(csvText)
-
-    // Get stored version
-    const storedVersion = localStorage.getItem(CONFIG.cacheVersionKey)
-
-    // If versions differ, clear cache and reload data
-    if (storedVersion && storedVersion !== currentHash) {
-      console.log("[v0] Cambios detectados en Google Sheets - Actualizando cache automáticamente")
-      await clearCacheAndReload()
-      return
-    }
-
-    // Store the current version if not exists
-    if (!storedVersion) {
-      localStorage.setItem(CONFIG.cacheVersionKey, currentHash)
-    }
-  } catch (error) {
-    console.error("[v0] Error validating cache version:", error)
-  }
-}
-
-async function clearCacheAndReload() {
-  localStorage.removeItem(CONFIG.cacheKey)
-  await loadInventoryData()
-  console.log("[v0] Cache actualizado automáticamente con nuevos datos de Google Sheets")
-}
-
-function startCacheValidation() {
-  // Validate immediately on load
-  validateCacheVersion()
-
-  // Then validate periodically every 30 seconds
-  updateCheckInterval = setInterval(() => {
-    validateCacheVersion()
-  }, CONFIG.checkUpdateInterval)
-}
-
-function stopCacheValidation() {
-  if (updateCheckInterval) {
-    clearInterval(updateCheckInterval)
-    updateCheckInterval = null
-  }
-}
 
 // Event Listeners
 function setupEventListeners() {
@@ -121,8 +55,6 @@ function setupEventListeners() {
   closeFormBtn.addEventListener("click", closeProductForm)
   cancelBtn.addEventListener("click", handleCancel)
   countForm.addEventListener("submit", handleSubmit)
-
-  window.addEventListener("beforeunload", stopCacheValidation)
 }
 
 // Generate unique count ID
@@ -200,9 +132,6 @@ async function loadInventoryData() {
     const response = await fetch(CONFIG.inventoryURL)
     const csvText = await response.text()
     inventoryData = parseCSV(csvText)
-
-    const versionHash = generateHash(csvText)
-    localStorage.setItem(CONFIG.cacheVersionKey, versionHash)
 
     // Cache the data
     localStorage.setItem(
@@ -740,3 +669,17 @@ function hideDataLoadingOverlay() {
     setTimeout(() => loadingOverlay.remove(), 300)
   }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
