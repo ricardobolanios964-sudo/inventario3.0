@@ -95,6 +95,11 @@
                     </div>
                 </div>
 
+                <!-- View History Link -->
+                <a id="view-history-link" class="view-history-link" title="Ver historial del producto">
+                 Ver Historial
+                </a>
+
                 <form id="count-form">
                     <div class="form-group">
                         <label for="physical-count">Cantidad Física (Conteo Actual) *</label>
@@ -152,5 +157,21 @@
     <div id="toast" class="toast"></div>
 
     <script src="script.js"></script>
+     <script src="script3.js"></script>
+
+    
+    <!-- History Modal -->
+<div id="history-modal" class="history-modal">
+  <div class="history-panel">
+    <div class="history-panel-header">
+      <h3>Historial de Pedidos</h3>
+      <button id="close-history-modal" class="close-history-btn">×</button>
+    </div>
+    <div id="history-content" class="history-content">
+      <!-- La tabla se cargará aquí -->
+    </div>
+  </div>
+</div>
 </body>
 </html>
+
