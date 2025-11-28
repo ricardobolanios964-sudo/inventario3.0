@@ -213,51 +213,66 @@ async function handleViewHistory(e) {
 function findProductHistory(code) {
   const normalizedCode = code.toString().trim().toLowerCase()
 
+  const codigosDisponibles = pedidosData.slice(0, 10).map((item) => getPedidoCodigo(item))
+  console.log("[v0] Primeros 10 códigos en pedidos:", codigosDisponibles)
+
   return pedidosData
-    .filter(item => {
+    .filter((item) => {
       const itemCode = getPedidoCodigo(item).toString().trim().toLowerCase()
       return itemCode === normalizedCode
     })
     .sort((a, b) => {
+      const fechaA = getPedidoFecha(a) // Formato esperado: DD/MM/YYYY o similar
+      const fechaB = getPedidoFecha(b)
 
-      // 🔹 Primero intentamos obtener la columna "Fecha y Hora"
-      const fhA = getPedidoFechaHora(a)
-      const fhB = getPedidoFechaHora(b)
+     const parseHora = (hora) => {
+  if (!hora || hora === "-") return 0
 
-      const toDateTime = (fh, fallbackFecha, fallbackHora) => {
-        // Si existe "Fecha y Hora"
-        if (fh && fh !== "-") {
-          const dt = new Date(fh.replace(/-/g, "/"))
-          if (!isNaN(dt.getTime())) return dt.getTime()
-        }
+  // Normalizar: quitar espacios y convertir a string
+  hora = hora.toString().trim()
 
-        // Si falla, usar FECHA + INICIO
-        const fecha = fallbackFecha || "-"
-        const hora = fallbackHora || "00:00"
+  // Caso: solo hora (ej. "8", "11", "16")
+  if (/^\d{1,2}$/.test(hora)) {
+    const h = Number.parseInt(hora)
+    return h * 60 // sin minutos
+  }
 
-        if (fecha !== "-") {
-          const [d, m, y] = fecha.split(/[\/-]/)
-          const dateISO = `${y.length === 2 ? "20" + y : y}-${m}-${d} ${hora}`
-          const dt = new Date(dateISO)
-          if (!isNaN(dt.getTime())) return dt.getTime()
-        }
+  // Caso: HH:MM (ej. "08:30", "8:05")
+  const match = hora.match(/^(\d{1,2}):(\d{2})$/)
+  if (match) {
+    const h = Number.parseInt(match[1])
+    const m = Number.parseInt(match[2])
+    return h * 60 + m
+  }
 
-        return 0 // fallback final
+  // Cualquier otro formato → 0
+  return 0
+}
+
+
+      const fechaNumA = parseFecha(fechaA)
+      const fechaNumB = parseFecha(fechaB)
+
+      // Primero comparar por fecha
+      if (fechaNumB !== fechaNumA) {
+        return fechaNumB - fechaNumA // Fecha más reciente primero
       }
 
-      const dateA = toDateTime(
-        fhA,
-        getPedidoFecha(a),
-        getPedidoInicio(a)
-      )
+      // Si las fechas son iguales, comparar por hora (columna INICIO o Fecha y Hora)
+      const horaA = getPedidoInicio(a) || getPedidoFechaHora(a)
+      const horaB = getPedidoInicio(b) || getPedidoFechaHora(b)
 
-      const dateB = toDateTime(
-        fhB,
-        getPedidoFecha(b),
-        getPedidoInicio(b)
-      )
+      // Convertir hora HH:MM a minutos para comparar
+      const parseHora = (hora) => {
+        if (!hora || hora === "-") return 0
+        const match = hora.match(/(\d{1,2}):(\d{2})/)
+        if (match) {
+          return Number.parseInt(match[1]) * 60 + Number.parseInt(match[2])
+        }
+        return 0
+      }
 
-      return dateB - dateA // más reciente primero
+      return parseHora(horaB) - parseHora(horaA) // Hora más reciente primero
     })
 }
 
@@ -461,4 +476,5 @@ window.historyModule = {
   },
   isLoaded: () => isPedidosLoaded,
 }
+
 
