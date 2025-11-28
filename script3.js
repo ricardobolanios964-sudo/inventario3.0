@@ -1,742 +1,465 @@
-// Configuration
-const CONFIG = {
-  inventoryURL:
-    "https://docs.google.com/spreadsheets/d/e/2PACX-1vQFZUyjvlU7g4HUvzNfJOAJAbkEKnYwAeBnTeeiZEJrvU0_-VyTfQHHAIJqb1GO9WyBuN3TYlBmXEBG/pub?gid=1886672096&single=true&output=csv",
-  appsScriptURL:
-    "https://script.google.com/macros/s/AKfycbxvEqyEnzDDzX97mW5bkOweFUdbiA1fb1DhLuY7F9A-28cOHYdoHi0VLXK8uzB80Np_-w/exec",
-  cacheKey: "farmacia_bolanos_inventory_cache",
-  cacheVersionKey: "farmacia_bolanos_cache_version", // Added version key for detecting changes
-  cacheExpiry: 5 * 60 * 1000, // 5 minutes
-  checkUpdateInterval: 5 * 1000, // Check for changes every 5 seconds
+// ========================================
+// SCRIPT 3 - HISTORIAL DE PEDIDOS
+// Farmacia Bolaños - Sistema de Conteo
+// Optimizado para rendimiento
+// ========================================
+
+const HISTORY_CONFIG = {
+  // IMPORTANTE: Cambia este gid por el de tu hoja "PEDIDOS"
+  pedidosURL:
+    "https://docs.google.com/spreadsheets/d/e/2PACX-1vQFZUyjvlU7g4HUvzNfJOAJAbkEKnYwAeBnTeeiZEJrvU0_-VyTfQHHAIJqb1GO9WyBuN3TYlBmXEBG/pub?gid=693750954&single=true&output=csv",
+  cacheKey: "farmacia_bolanos_pedidos_cache",
+  cacheExpiry: 5 * 1000,
 }
 
-// State
-let inventoryData = []
-let currentProduct = null
-let countStartTime = null
-let productStartTime = null
-let countId = null
-let isDataLoaded = false
-let updateCheckInterval = null // Track interval to stop on unload
+let pedidosData = []
+let isPedidosLoaded = false
+let isLoadingPedidos = false
 
-// Column Mapping
-const columnMapping = {
-  codigo: null,
-  nombre: null,
-  stock: null,
+const COLUMN_NAMES = {
+  ID: "ID",
+  FECHA_HORA: "Fecha y Hora",
+  SUCURSAL: "Sucursal",
+  CODIGO: "CODIGO",
+  PRODUCTO: "PRODUCTO",
+  LABORATORIO: "LABORATORIO",
+  SOLICITUD: "SOLICITUD",
+  CORREO: "Correo",
+  DESPACHO: "DESPACHO",
+  CANTIDAD: "CANTIDAD",
+  SIN_REGISTRO: "SIN REGISTRO EN CORREO",
+  FECHA: "FECHA",
+  INICIO: "INICIO",
+  FIN: "FIN",
+  PICKER: "PICKER",
+  CONTADO: "CONTADO",
+  REVISADO: "REVISADO",
 }
 
-// DOM Elements
-const landingPage = document.getElementById("landing-page")
-const formPage = document.getElementById("form-page")
-const startCountBtn = document.getElementById("start-count-btn")
-const backBtn = document.getElementById("back-btn")
-const searchInput = document.getElementById("search-input")
-const clearSearchBtn = document.getElementById("clear-search")
-const searchResults = document.getElementById("search-results")
-const productForm = document.getElementById("product-form")
-const countForm = document.getElementById("count-form")
-const closeFormBtn = document.getElementById("close-form")
-const cancelBtn = document.getElementById("cancel-btn")
-const modal = document.getElementById("modal")
-const toast = document.getElementById("toast")
-
-// Initialize
 document.addEventListener("DOMContentLoaded", () => {
-  setupEventListeners()
-  loadInventoryData().then(() => {
-    isDataLoaded = true
-    console.log("[v0] Data loaded and ready")
-  })
-
-  startCacheValidation()
+  setupHistoryEventListeners()
 })
 
-function generateHash(content) {
-  let hash = 0
-  for (let i = 0; i < content.length; i++) {
-    const char = content.charCodeAt(i)
-    hash = (hash << 5) - hash + char
-    hash = hash & hash // Convert to 32bit integer
+function setupHistoryEventListeners() {
+  const viewHistoryLink = document.getElementById("view-history-link")
+  const closeHistoryModal = document.getElementById("close-history-modal")
+  const historyModal = document.getElementById("history-modal")
+
+  if (viewHistoryLink) {
+    viewHistoryLink.addEventListener("click", handleViewHistory)
   }
-  return Math.abs(hash).toString(36)
-}
 
-async function validateCacheVersion() {
-  try {
-    const response = await fetch(CONFIG.inventoryURL)
-    const csvText = await response.text()
-
-    // Generate hash of current data
-    const currentHash = generateHash(csvText)
-
-    // Get stored version
-    const storedVersion = localStorage.getItem(CONFIG.cacheVersionKey)
-
-    // If versions differ, clear cache and reload data
-    if (storedVersion && storedVersion !== currentHash) {
-      console.log("[v0] Cambios detectados en Google Sheets - Actualizando cache automáticamente")
-      await clearCacheAndReload()
-      return
-    }
-
-    // Store the current version if not exists
-    if (!storedVersion) {
-      localStorage.setItem(CONFIG.cacheVersionKey, currentHash)
-    }
-  } catch (error) {
-    console.error("[v0] Error validating cache version:", error)
+  if (closeHistoryModal) {
+    closeHistoryModal.addEventListener("click", closeHistoryModalHandler)
   }
-}
 
-async function clearCacheAndReload() {
-  localStorage.removeItem(CONFIG.cacheKey)
-  await loadInventoryData()
-  console.log("[v0] Cache actualizado automáticamente con nuevos datos de Google Sheets")
-}
-
-function startCacheValidation() {
-  // Validate immediately on load
-  validateCacheVersion()
-
-  // Then validate periodically every 5 seconds
-  updateCheckInterval = setInterval(() => {
-    validateCacheVersion()
-  }, CONFIG.checkUpdateInterval)
-}
-
-function stopCacheValidation() {
-  if (updateCheckInterval) {
-    clearInterval(updateCheckInterval)
-    updateCheckInterval = null
+  if (historyModal) {
+    historyModal.addEventListener("click", (e) => {
+      if (e.target === historyModal) closeHistoryModalHandler()
+    })
   }
-}
 
-// Event Listeners
-function setupEventListeners() {
-  startCountBtn.addEventListener("click", startCounting)
-  backBtn.addEventListener("click", goBackToLanding)
-  searchInput.addEventListener("input", handleSearch)
-  clearSearchBtn.addEventListener("click", clearSearch)
-  closeFormBtn.addEventListener("click", closeProductForm)
-  cancelBtn.addEventListener("click", handleCancel)
-  countForm.addEventListener("submit", handleSubmit)
-
-  window.addEventListener("beforeunload", stopCacheValidation)
-}
-
-// Generate unique count ID
-function generateCountId() {
-  const date = new Date()
-  const year = date.getFullYear().toString().slice(-2)
-  const month = String(date.getMonth() + 1).padStart(2, "0")
-  const day = String(date.getDate()).padStart(2, "0")
-  const hours = String(date.getHours()).padStart(2, "0")
-  const minutes = String(date.getMinutes()).padStart(2, "0")
-  const random = Math.floor(Math.random() * 1000)
-    .toString()
-    .padStart(3, "0")
-
-  return `FB-${year}${month}${day}-${hours}${minutes}-${random}`
-}
-
-// Start counting
-function startCounting() {
-  landingPage.classList.remove("active")
-  formPage.classList.add("active")
-
-  if (!isDataLoaded) {
-    showDataLoadingOverlay()
-
-    const checkInterval = setInterval(() => {
-      if (isDataLoaded) {
-        clearInterval(checkInterval)
-        hideDataLoadingOverlay()
-        searchInput.disabled = false
-        searchInput.placeholder = "Buscar por código o nombre..."
-        searchInput.focus()
+  document.addEventListener(
+    "keydown",
+    (e) => {
+      if (e.key === "Escape" && historyModal?.classList.contains("active")) {
+        closeHistoryModalHandler()
       }
-    }, 100)
-  } else {
-    setTimeout(() => searchInput.focus(), 300)
-  }
+    },
+    { passive: true },
+  )
 }
 
-// Format time
-function formatTime(date) {
-  return date.toLocaleTimeString("es-ES", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  })
-}
+async function loadPedidosData() {
+  if (isLoadingPedidos) return
+  isLoadingPedidos = true
 
-// Format date for LATAM format DD/MM/YYYY
-function formatDate(date) {
-  const day = String(date.getDate()).padStart(2, "0")
-  const month = String(date.getMonth() + 1).padStart(2, "0")
-  const year = date.getFullYear()
-  return `${day}/${month}/${year}`
-}
-
-// Load inventory data
-async function loadInventoryData() {
   try {
-    // Check cache first
-    const cached = localStorage.getItem(CONFIG.cacheKey)
-    if (cached) {
-      const { data, timestamp } = JSON.parse(cached)
-      const now = Date.now()
-
-      // Use cached data if not expired
-      if (now - timestamp < CONFIG.cacheExpiry) {
-        inventoryData = data
-        console.log("[v0] Loaded from cache:", inventoryData.length, "products")
+    const cached = localStorage.getItem(HISTORY_CONFIG.cacheKey)
+    if (cached && isPedidosLoaded) {
+      const { timestamp } = JSON.parse(cached)
+      if (Date.now() - timestamp < HISTORY_CONFIG.cacheExpiry) {
+        isLoadingPedidos = false
         return
       }
     }
 
-    // Fetch fresh data
-    const response = await fetch(CONFIG.inventoryURL)
+    const url = `${HISTORY_CONFIG.pedidosURL}&_t=${Date.now()}`
+    const response = await fetch(url)
     const csvText = await response.text()
-    inventoryData = parseCSV(csvText)
 
-    const versionHash = generateHash(csvText)
-    localStorage.setItem(CONFIG.cacheVersionKey, versionHash)
+    console.log("[v0] CSV raw (primeras 500 chars):", csvText.substring(0, 500))
 
-    // Cache the data
+    pedidosData = parsePedidosCSV(csvText)
+
+    console.log("[v0] Pedidos cargados:", pedidosData.length)
+    if (pedidosData.length > 0) {
+      console.log("[v0] Primer registro completo:", pedidosData[0])
+      console.log("[v0] Columnas detectadas:", Object.keys(pedidosData[0]))
+    }
+
     localStorage.setItem(
-      CONFIG.cacheKey,
+      HISTORY_CONFIG.cacheKey,
       JSON.stringify({
-        data: inventoryData,
+        data: pedidosData,
         timestamp: Date.now(),
       }),
     )
 
-    console.log("[v0] Inventory data loaded:", inventoryData.length, "products")
+    isPedidosLoaded = true
   } catch (error) {
-    console.error("[v0] Error loading inventory:", error)
-    showToast("Error al cargar el inventario", "error")
-    isDataLoaded = true
+    console.error("[v0] Error cargando pedidos:", error)
+  } finally {
+    isLoadingPedidos = false
   }
 }
 
-// Parse CSV
-function parseCSV(csv) {
+function parsePedidosCSV(csv) {
   const lines = csv.trim().split("\n")
-  const headers = lines[0].split(",").map((h) => h.trim().replace(/"/g, "").toUpperCase())
+  const headers = lines[0].split(",").map((h) => h.trim().replace(/"/g, ""))
 
-  // Detect column names (case insensitive)
-  headers.forEach((header, index) => {
-    const cleanHeader = header.trim()
-    if (cleanHeader.includes("CODIGO") || cleanHeader.includes("CÓDIGO") || cleanHeader === "ID") {
-      columnMapping.codigo = cleanHeader
-    }
-    if (cleanHeader.includes("NOMBRE") || cleanHeader.includes("PRODUCTO") || cleanHeader.includes("DESCRIPCION")) {
-      columnMapping.nombre = cleanHeader
-    }
-    if (cleanHeader.includes("FISICO FINAL") || cleanHeader.includes("STOCK") || cleanHeader.includes("EXISTENCIA")) {
-      columnMapping.stock = cleanHeader
-    }
-  })
+  console.log("[v0] Headers encontrados:", headers)
 
-  return lines
-    .slice(1)
-    .map((line) => {
-      const values = parseCSVLine(line)
-      const obj = {}
-      headers.forEach((header, index) => {
-        obj[header] = values[index] ? values[index].trim().replace(/"/g, "") : ""
-      })
-      return obj
+  const results = []
+  for (let i = 1; i < lines.length; i++) {
+    const values = parseCSVLine(lines[i])
+    const obj = {}
+    headers.forEach((header, idx) => {
+      obj[header] = values[idx] ? values[idx].trim().replace(/"/g, "") : ""
     })
-    .filter((item) => {
-      // Filter out empty rows
-      const hasCode = columnMapping.codigo && item[columnMapping.codigo]
-      const hasName = columnMapping.nombre && item[columnMapping.nombre]
-      return hasCode || hasName
-    })
+    // Filtrar filas vacías
+    const codigo = obj[COLUMN_NAMES.CODIGO] || obj["CODIGO"]
+    if (codigo && codigo.trim()) results.push(obj)
+  }
+  return results
 }
 
-// Parse CSV line (handles commas within quotes)
 function parseCSVLine(line) {
   const result = []
   let current = ""
   let inQuotes = false
-
   for (let i = 0; i < line.length; i++) {
     const char = line[i]
-
-    if (char === '"') {
-      inQuotes = !inQuotes
-    } else if (char === "," && !inQuotes) {
+    if (char === '"') inQuotes = !inQuotes
+    else if (char === "," && !inQuotes) {
       result.push(current)
       current = ""
-    } else {
-      current += char
-    }
+    } else current += char
   }
   result.push(current)
-
   return result
 }
 
-// Handle search
-let searchTimeout = null
-function handleSearch(e) {
-  const query = e.target.value.trim()
+const getPedidoCodigo = (item) => item[COLUMN_NAMES.CODIGO] || item["CODIGO"] || item["Codigo"] || "-"
+const getPedidoProducto = (item) => item[COLUMN_NAMES.PRODUCTO] || item["PRODUCTO"] || item["Producto"] || "-"
+const getPedidoFechaHora = (item) =>
+  item[COLUMN_NAMES.FECHA_HORA] || item["Fecha y Hora"] || item["FECHA Y HORA"] || "-"
+const getPedidoCantidad = (item) => item[COLUMN_NAMES.CANTIDAD] || item["CANTIDAD"] || item["Cantidad"] || "0"
+const getPedidoDespacho = (item) => item[COLUMN_NAMES.DESPACHO] || item["DESPACHO"] || item["Despacho"] || "-"
+const getPedidoSucursal = (item) => item[COLUMN_NAMES.SUCURSAL] || item["Sucursal"] || item["SUCURSAL"] || "-"
+const getPedidoLaboratorio = (item) =>
+  item[COLUMN_NAMES.LABORATORIO] || item["LABORATORIO"] || item["Laboratorio"] || "-"
+const getPedidoSolicitud = (item) => item[COLUMN_NAMES.SOLICITUD] || item["SOLICITUD"] || item["Solicitud"] || "-"
+const getPedidoPicker = (item) => item[COLUMN_NAMES.PICKER] || item["PICKER"] || item["Picker"] || "-"
+const getPedidoContado = (item) => item[COLUMN_NAMES.CONTADO] || item["CONTADO"] || item["Contado"] || "-"
+const getPedidoRevisado = (item) => item[COLUMN_NAMES.REVISADO] || item["REVISADO"] || item["Revisado"] || "-"
+const getPedidoFecha = (item) => item[COLUMN_NAMES.FECHA] || item["FECHA"] || item["Fecha"] || "-"
+const getPedidoInicio = (item) => item[COLUMN_NAMES.INICIO] || item["INICIO"] || item["Inicio"] || "-"
+const getPedidoFin = (item) => item[COLUMN_NAMES.FIN] || item["FIN"] || item["Fin"] || "-"
 
-  clearSearchBtn.style.display = query ? "block" : "none"
+async function handleViewHistory(e) {
+  if (e) e.preventDefault()
 
-  if (query.length < 1) {
-    searchResults.classList.remove("active")
-    searchResults.innerHTML = ""
-    return
+  const productCodeElement = document.getElementById("product-code")
+  if (!productCodeElement) return showHistoryToast("No hay producto seleccionado", "error")
+
+  const productCode = productCodeElement.textContent.trim()
+  if (!productCode || productCode === "Sin código") {
+    return showHistoryToast("Código de producto no válido", "error")
   }
 
-  // Debounce search for better performance
-  clearTimeout(searchTimeout)
-  searchTimeout = setTimeout(() => {
-    performSearch(query)
-  }, 150)
-}
+  const historyModal = document.getElementById("history-modal")
+  const historyContent = document.getElementById("history-content")
 
-function performSearch(query) {
-  const normalizeText = (text) => {
-    return text
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-z0-9]/g, "")
+  if (historyModal) {
+    historyModal.classList.add("active")
+    document.body.style.overflow = "hidden"
   }
 
-  const queryNormalized = normalizeText(query)
-  const queryOriginal = query.toLowerCase()
-
-  const scoredResults = inventoryData
-    .map((item) => {
-      const code = getProductCode(item)
-      const name = getProductName(item)
-      const codeNormalized = normalizeText(code)
-      const nameNormalized = normalizeText(name)
-      const codeLower = code.toLowerCase()
-      const nameLower = name.toLowerCase()
-
-      let score = 0
-
-      if (codeLower === queryOriginal || codeNormalized === queryNormalized) {
-        score = 1000
-      } else if (nameLower === queryOriginal || nameNormalized === queryNormalized) {
-        score = 900
-      } else if (codeLower.startsWith(queryOriginal) || codeNormalized.startsWith(queryNormalized)) {
-        score = 800
-      } else if (nameLower.startsWith(queryOriginal) || nameNormalized.startsWith(queryNormalized)) {
-        score = 700
-      } else if (codeNormalized.includes(queryNormalized)) {
-        score = 600
-      } else if (nameNormalized.includes(queryNormalized)) {
-        score = 500
-      } else if (fuzzyMatch(queryNormalized, codeNormalized)) {
-        score = 400
-      } else if (fuzzyMatch(queryNormalized, nameNormalized)) {
-        score = 300
-      }
-
-      if (score > 0) {
-        const lengthBonus = 100 / (code.length + name.length)
-        score += lengthBonus
-      }
-
-      return { item, score }
-    })
-    .filter((result) => result.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .map((result) => result.item)
-
-  console.log(`[v0] Search for "${query}" returned ${scoredResults.length} results`)
-  displaySearchResults(scoredResults, query)
-}
-
-// Display search results
-function displaySearchResults(results, query) {
-  if (results.length === 0) {
-    searchResults.innerHTML = '<div class="no-results">No se encontraron productos</div>'
-    searchResults.classList.add("active")
-    return
+  if (historyContent) {
+    historyContent.innerHTML = `
+      <div class="history-loading">
+        <div class="history-loading-spinner"></div>
+        <p>Cargando historial...</p>
+      </div>
+    `
   }
 
-  const highlightText = (text, query) => {
-    if (!query || !text) return text
+  isPedidosLoaded = false
+  await loadPedidosData()
 
-    const normalizeText = (str) => {
-      return str
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
+  requestAnimationFrame(() => {
+    const history = findProductHistory(productCode)
+    console.log("[v0] Historial encontrado:", history.length, "registros")
+    if (history.length > 0) {
+      console.log("[v0] Último registro:", history[0])
     }
+    displayProductHistory(productCode, history)
+  })
+}
 
-    const textNormalized = normalizeText(text)
-    const queryNormalized = normalizeText(query)
+function findProductHistory(code) {
+  const normalizedCode = code.toString().trim().toLowerCase()
 
-    const index = textNormalized.indexOf(queryNormalized)
+  const codigosDisponibles = pedidosData.slice(0, 10).map((item) => getPedidoCodigo(item))
+  console.log("[v0] Primeros 10 códigos en pedidos:", codigosDisponibles)
 
-    if (index === -1) return text
+  return pedidosData
+    .filter((item) => {
+      const itemCode = getPedidoCodigo(item).toString().trim().toLowerCase()
+      return itemCode === normalizedCode
+    })
+    .sort((a, b) => {
+      const fechaA = getPedidoFecha(a) // Formato esperado: DD/MM/YYYY o similar
+      const fechaB = getPedidoFecha(b)
 
-    const before = text.substring(0, index)
-    const match = text.substring(index, index + query.length)
-    const after = text.substring(index + query.length)
+      // Convertir fecha DD/MM/YYYY a formato comparable YYYYMMDD
+      const parseFecha = (fecha) => {
+        if (!fecha || fecha === "-") return 0
+        // Intentar diferentes formatos
+        const parts = fecha.split(/[/-]/)
+        if (parts.length === 3) {
+          // Asumir DD/MM/YYYY
+          const day = parts[0].padStart(2, "0")
+          const month = parts[1].padStart(2, "0")
+          const year = parts[2].length === 2 ? "20" + parts[2] : parts[2]
+          return Number.parseInt(year + month + day)
+        }
+        return 0
+      }
 
-    return `${before}<span class="highlight">${match}</span>${after}`
+      const fechaNumA = parseFecha(fechaA)
+      const fechaNumB = parseFecha(fechaB)
+
+      // Primero comparar por fecha
+      if (fechaNumB !== fechaNumA) {
+        return fechaNumB - fechaNumA // Fecha más reciente primero
+      }
+
+      // Si las fechas son iguales, comparar por hora (columna INICIO o Fecha y Hora)
+      const horaA = getPedidoInicio(a) || getPedidoFechaHora(a)
+      const horaB = getPedidoInicio(b) || getPedidoFechaHora(b)
+
+      // Convertir hora HH:MM a minutos para comparar
+      const parseHora = (hora) => {
+        if (!hora || hora === "-") return 0
+        const match = hora.match(/(\d{1,2}):(\d{2})/)
+        if (match) {
+          return Number.parseInt(match[1]) * 60 + Number.parseInt(match[2])
+        }
+        return 0
+      }
+
+      return parseHora(horaB) - parseHora(horaA) // Hora más reciente primero
+    })
+}
+
+function displayProductHistory(code, history) {
+  const historyContent = document.getElementById("history-content")
+  if (!historyContent) return
+
+  if (history.length === 0) {
+    historyContent.innerHTML = `
+      <div class="history-empty">
+        <div class="history-empty-icon">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/>
+            <rect x="9" y="3" width="6" height="4" rx="1"/>
+          </svg>
+        </div>
+        <h4>Sin historial</h4>
+        <p>No se encontraron pedidos para el código <strong>${code}</strong></p>
+      </div>
+    `
+    return
   }
 
-  searchResults.innerHTML = results
-    .map((item) => {
-      const code = getProductCode(item)
-      const name = getProductName(item)
-      const stock = getProductStock(item)
+  const lastRecord = history[0]
+  const productName = getPedidoProducto(lastRecord)
+  const fechaHora = getPedidoFechaHora(lastRecord)
 
-      const highlightedCode = highlightText(code, query)
-      const highlightedName = highlightText(name, query)
+  let html = `
+    <div class="history-product-header">
+      <span class="history-code">${code}</span>
+      <h4 class="history-product-name">${productName}</h4>
+      <p class="history-count">${history.length} registro${history.length > 1 ? "s" : ""} encontrado${history.length > 1 ? "s" : ""}</p>
+    </div>
 
-      return `
-            <div class="search-result-item" data-product='${JSON.stringify(item).replace(/'/g, "&#39;")}'>
-                <div class="result-code">${highlightedCode}</div>
-                <div class="result-name">${highlightedName}</div>
-                <div class="result-stock">
-                    <span class="stock-label">Existencia:</span>
-                    <span class="stock-amount">${stock} unidades</span>
-                </div>
+    <div class="history-last-record">
+      <div class="history-last-header">
+        <span class="history-last-badge">Último Registro</span>
+      </div>
+      
+      <!-- FECHA Y HORA destacada -->
+      <div class="history-datetime">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+          <line x1="16" y1="2" x2="16" y2="6"/>
+          <line x1="8" y1="2" x2="8" y2="6"/>
+          <line x1="3" y1="10" x2="21" y2="10"/>
+        </svg>
+        <span>${fechaHora}</span>
+      </div>
+      
+      <div class="history-last-grid">
+        <div class="history-stat-card">
+          <div class="history-stat-icon cantidad">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+            </svg>
+          </div>
+          <div class="history-stat-info">
+            <span class="history-stat-value">${getPedidoCantidad(lastRecord)}</span>
+            <span class="history-stat-label">Cantidad</span>
+          </div>
+        </div>
+
+        <div class="history-stat-card">
+          <div class="history-stat-icon despacho">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="1" y="3" width="15" height="13"/>
+              <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/>
+              <circle cx="5.5" cy="18.5" r="2.5"/>
+              <circle cx="18.5" cy="18.5" r="2.5"/>
+            </svg>
+          </div>
+          <div class="history-stat-info">
+            <span class="history-stat-value">${getPedidoDespacho(lastRecord)}</span>
+            <span class="history-stat-label">Despacho</span>
+          </div>
+        </div>
+
+        <div class="history-stat-card">
+          <div class="history-stat-icon sucursal">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+              <polyline points="9 22 9 12 15 12 15 22"/>
+            </svg>
+          </div>
+          <div class="history-stat-info">
+            <span class="history-stat-value">${getPedidoSucursal(lastRecord)}</span>
+            <span class="history-stat-label">Sucursal</span>
+          </div>
+        </div>
+
+        <div class="history-stat-card">
+          <div class="history-stat-icon laboratorio">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+            </svg>
+          </div>
+          <div class="history-stat-info">
+            <span class="history-stat-value">${getPedidoLaboratorio(lastRecord)}</span>
+            <span class="history-stat-label">Laboratorio</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="history-last-details">
+        <div class="history-detail-row">
+          <span class="history-detail-label">Solicitud</span>
+          <span class="history-detail-value">${getPedidoSolicitud(lastRecord)}</span>
+        </div>
+        <div class="history-detail-row">
+          <span class="history-detail-label">Fecha</span>
+          <span class="history-detail-value">${getPedidoFecha(lastRecord)}</span>
+        </div>
+        <div class="history-detail-row">
+          <span class="history-detail-label">Inicio</span>
+          <span class="history-detail-value">${getPedidoInicio(lastRecord)}</span>
+        </div>
+        <div class="history-detail-row">
+          <span class="history-detail-label">Fin</span>
+          <span class="history-detail-value">${getPedidoFin(lastRecord)}</span>
+        </div>
+        <div class="history-detail-row">
+          <span class="history-detail-label">Picker</span>
+          <span class="history-detail-value">${getPedidoPicker(lastRecord)}</span>
+        </div>
+        <div class="history-detail-row">
+          <span class="history-detail-label">Contado</span>
+          <span class="history-detail-value">${getPedidoContado(lastRecord)}</span>
+        </div>
+        <div class="history-detail-row">
+          <span class="history-detail-label">Revisado</span>
+          <span class="history-detail-value">${getPedidoRevisado(lastRecord)}</span>
+        </div>
+      </div>
+    </div>
+  `
+
+  // Timeline solo si hay más de 1 registro
+  if (history.length > 1) {
+    html += `
+      <div class="history-timeline-section">
+        <h5 class="history-timeline-title">Registros Anteriores</h5>
+        <div class="history-timeline">
+    `
+    // Mostrar todos los registros en el timeline
+    history.forEach((record, index) => {
+      html += `
+        <div class="history-timeline-item ${index === 0 ? "latest" : ""}">
+          <div class="history-timeline-dot"></div>
+          <div class="history-timeline-content">
+            <div class="history-timeline-date">${getPedidoFechaHora(record)}</div>
+            <div class="history-timeline-details">
+              <span>Cant: ${getPedidoCantidad(record)}</span>
+              <span class="sep">•</span>
+              <span>Desp: ${getPedidoDespacho(record)}</span>
+              <span class="sep">•</span>
+              <span>${getPedidoSucursal(record)}</span>
             </div>
-        `
+          </div>
+        </div>
+      `
     })
-    .join("")
-
-  searchResults.classList.add("active")
-
-  document.querySelectorAll(".search-result-item").forEach((item) => {
-    item.addEventListener("click", () => {
-      const product = JSON.parse(item.dataset.product)
-      selectProduct(product)
-    })
-  })
-}
-
-// Clear search
-function clearSearch() {
-  searchInput.value = ""
-  clearSearchBtn.style.display = "none"
-  searchResults.classList.remove("active")
-  searchResults.innerHTML = ""
-  searchInput.focus()
-}
-
-// Select product
-function selectProduct(product) {
-  currentProduct = product
-  productStartTime = new Date()
-
-  if (!countId) {
-    countId = generateCountId()
-    countStartTime = new Date()
-
-    document.getElementById("count-id").textContent = `ID: ${countId}`
-    document.getElementById("start-time").textContent = `Inicio: ${formatTime(countStartTime)}`
+    html += `</div></div>`
   }
 
-  searchResults.classList.remove("active")
-
-  document.getElementById("product-code").textContent = getProductCode(product)
-  document.getElementById("product-name").textContent = getProductName(product)
-  document.getElementById("current-stock").textContent = `${getProductStock(product)} unidades`
-
-  document.getElementById("physical-count").value = getProductStock(product)
-  document.getElementById("location").value = ""
-  document.getElementById("observations").value = ""
-
-  productForm.style.display = "block"
-
-  setTimeout(() => {
-    productForm.scrollIntoView({ behavior: "smooth", block: "start" })
-  }, 100)
+  historyContent.innerHTML = html
 }
 
-// Close product form
-function closeProductForm() {
-  productForm.style.display = "none"
-  currentProduct = null
-  productStartTime = null
-  clearSearch()
-}
-
-// Handle cancel
-function handleCancel() {
-  showModal("warning", "¿Cancelar registro?", "Se perderán los datos ingresados. ¿Está seguro?", () => {
-    resetCountState()
-    closeProductForm()
-    showToast("Registro cancelado", "error")
-  })
-}
-
-// Handle submit
-function handleSubmit(e) {
-  e.preventDefault()
-
-  const physicalCount = document.getElementById("physical-count").value
-  const location = document.getElementById("location").value.trim()
-  const observations = document.getElementById("observations").value.trim()
-
-  if (!location) {
-    showToast("La ubicación es obligatoria", "error")
-    return
-  }
-
-  showModal("warning", "¿Enviar conteo?", "Confirme que los datos son correctos antes de enviar.", () => {
-    submitCount({
-      countId,
-      startTime: productStartTime,
-      product: currentProduct,
-      physicalCount,
-      location,
-      observations,
-    })
-  })
-}
-
-// Submit count
-async function submitCount(data) {
-  const submitTime = new Date()
-  const endTime = new Date()
-
-  const countData = {
-    ID_REGISTRO: data.countId,
-    FECHA: formatDate(submitTime),
-    HORA_INICIO: formatTime(data.startTime),
-    HORA_FIN: formatTime(endTime),
-    CODIGO_PRODUCTO: getProductCode(data.product),
-    NOMBRE_PRODUCTO: getProductName(data.product),
-    EXISTENCIA_SISTEMA: getProductStock(data.product),
-    CANTIDAD_FISICA: data.physicalCount,
-    UBICACION: data.location,
-    OBSERVACIONES: data.observations,
-    ESTATUS: "Registrado",
-  }
-
-  console.log("[v0] Enviando datos a Google Sheets:", countData)
-
-  showLoadingAnimation()
-
-  try {
-    if (CONFIG.appsScriptURL === "TU_URL_DE_APPS_SCRIPT_AQUI") {
-      console.warn("[v0] URL de Apps Script no configurada")
-      hideLoadingAnimation()
-      showModal(
-        "warning",
-        "Configuración pendiente",
-        "Debes configurar la URL de Google Apps Script en el archivo script.js. Los datos se muestran en la consola.",
-        () => {
-          closeProductForm()
-          resetCountState()
-        },
-        true,
-      )
-      return
-    }
-
-    const response = await fetch(CONFIG.appsScriptURL, {
-      method: "POST",
-      mode: "no-cors",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(countData),
-    })
-
-    hideLoadingAnimation()
-
-    showModal(
-      "success",
-      "¡Conteo registrado!",
-      `El conteo ha sido registrado exitosamente con ID: ${data.countId}`,
-      () => {
-        closeProductForm()
-        resetCountState()
-        showToast("Conteo enviado correctamente", "success")
-      },
-      true,
-    )
-  } catch (error) {
-    console.error("[v0] Error al enviar conteo:", error)
-    hideLoadingAnimation()
-    showModal(
-      "error",
-      "Error al enviar",
-      "No se pudo enviar el conteo a Google Sheets. Verifica tu conexión e intenta nuevamente.",
-      () => {
-        closeProductForm()
-        resetCountState()
-      },
-      true,
-    )
+function closeHistoryModalHandler() {
+  const historyModal = document.getElementById("history-modal")
+  if (historyModal) {
+    historyModal.classList.remove("active")
+    document.body.style.overflow = ""
   }
 }
 
-// Show modal
-function showModal(type, title, message, onConfirm, hideCancel = false) {
-  const modalIcon = document.getElementById("modal-icon")
-  const modalTitle = document.getElementById("modal-title")
-  const modalMessage = document.getElementById("modal-message")
-  const modalCancel = document.getElementById("modal-cancel")
-  const modalConfirm = document.getElementById("modal-confirm")
+function showHistoryToast(message, type = "info") {
+  const existing = document.getElementById("history-toast")
+  if (existing) existing.remove()
 
-  modalIcon.className = `modal-icon ${type}`
-  modalIcon.textContent = type === "warning" ? "⚠️" : "✓"
-  modalTitle.textContent = title
-  modalMessage.textContent = message
-
-  modalCancel.style.display = hideCancel ? "none" : "block"
-
-  modal.classList.add("active")
-
-  const handleConfirm = () => {
-    modal.classList.remove("active")
-    if (onConfirm) onConfirm()
-    cleanup()
-  }
-
-  const handleCancel = () => {
-    modal.classList.remove("active")
-    cleanup()
-  }
-
-  const cleanup = () => {
-    modalConfirm.removeEventListener("click", handleConfirm)
-    modalCancel.removeEventListener("click", handleCancel)
-  }
-
-  modalConfirm.addEventListener("click", handleConfirm)
-  modalCancel.addEventListener("click", handleCancel)
-}
-
-// Show toast
-function showToast(message, type = "success") {
+  const toast = document.createElement("div")
+  toast.id = "history-toast"
+  toast.className = `history-toast ${type}`
   toast.textContent = message
-  toast.className = `toast ${type} active`
+  document.body.appendChild(toast)
 
+  requestAnimationFrame(() => toast.classList.add("active"))
   setTimeout(() => {
     toast.classList.remove("active")
-  }, 3000)
+    setTimeout(() => toast.remove(), 200)
+  }, 2500)
 }
 
-// Go back to landing page
-function goBackToLanding() {
-  showModal("warning", "¿Salir del conteo?", "Se perderá el progreso actual. ¿Está seguro?", () => {
-    resetCountState()
-    clearSearch()
-    closeProductForm()
-
-    document.getElementById("count-id").textContent = ""
-    document.getElementById("start-time").textContent = ""
-
-    formPage.classList.remove("active")
-    landingPage.classList.add("active")
-
-    showToast("Conteo cancelado", "error")
-  })
-}
-
-function getProductCode(item) {
-  if (columnMapping.codigo && item[columnMapping.codigo]) {
-    return item[columnMapping.codigo]
-  }
-  return item.CODIGO || item.CÓDIGO || item.ID || item.CODE || "Sin código"
-}
-
-function getProductName(item) {
-  if (columnMapping.nombre && item[columnMapping.nombre]) {
-    return item[columnMapping.nombre]
-  }
-  return item.NOMBRE || item.PRODUCTO || item.DESCRIPCION || item.DESCRIPTION || "Sin nombre"
-}
-
-function getProductStock(item) {
-  if (columnMapping.stock && item[columnMapping.stock]) {
-    return item[columnMapping.stock]
-  }
-  return item["FISICO FINAL"] || item.STOCK || item.EXISTENCIA || item.CANTIDAD || "0"
-}
-
-function fuzzyMatch(query, text) {
-  let queryIndex = 0
-  for (let i = 0; i < text.length && queryIndex < query.length; i++) {
-    if (text[i] === query[queryIndex]) {
-      queryIndex++
-    }
-  }
-  return queryIndex === query.length
-}
-
-// Show loading animation
-function showLoadingAnimation() {
-  const loadingOverlay = document.createElement("div")
-  loadingOverlay.id = "loading-overlay"
-  loadingOverlay.innerHTML = `
-    <div class="loading-content">
-      <div class="loading-spinner"></div>
-      <p class="loading-text">Enviando conteo</p>
-      <div class="loading-progress"></div>
-      <p class="loading-subtext">Procesando información...</p>
-    </div>
-  `
-  document.body.appendChild(loadingOverlay)
-  setTimeout(() => loadingOverlay.classList.add("active"), 10)
-}
-
-// Hide loading animation
-function hideLoadingAnimation() {
-  const loadingOverlay = document.getElementById("loading-overlay")
-  if (loadingOverlay) {
-    loadingOverlay.classList.remove("active")
-    setTimeout(() => loadingOverlay.remove(), 300)
-  }
-}
-
-// Reset count state
-function resetCountState() {
-  countStartTime = null
-  countId = null
-  currentProduct = null
-  productStartTime = null
-
-  document.getElementById("physical-count").value = ""
-  document.getElementById("location").value = ""
-  document.getElementById("observations").value = ""
-
-  document.getElementById("count-id").textContent = ""
-  document.getElementById("start-time").textContent = ""
-  document.getElementById("product-code").textContent = ""
-  document.getElementById("product-name").textContent = ""
-  document.getElementById("current-stock").textContent = ""
-}
-
-function showDataLoadingOverlay() {
-  const loadingOverlay = document.createElement("div")
-  loadingOverlay.id = "data-loading-overlay"
-  loadingOverlay.innerHTML = `
-    <div class="loading-content">
-      <div class="loading-spinner"></div>
-      <p class="loading-text">Cargando inventario completo</p>
-      <div class="loading-progress"></div>
-      <p class="loading-subtext">Preparando ${inventoryData.length || "..."} productos para búsqueda...</p>
-    </div>
-  `
-  document.body.appendChild(loadingOverlay)
-  setTimeout(() => loadingOverlay.classList.add("active"), 10)
-}
-
-function hideDataLoadingOverlay() {
-  const loadingOverlay = document.getElementById("data-loading-overlay")
-  if (loadingOverlay) {
-    loadingOverlay.classList.remove("active")
-    setTimeout(() => loadingOverlay.remove(), 300)
-  }
+// API pública
+window.historyModule = {
+  refresh: () => {
+    localStorage.removeItem(HISTORY_CONFIG.cacheKey)
+    isPedidosLoaded = false
+    return loadPedidosData()
+  },
+  isLoaded: () => isPedidosLoaded,
 }
