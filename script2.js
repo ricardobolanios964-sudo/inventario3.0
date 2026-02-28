@@ -546,9 +546,16 @@ function goBackToLanding() {
 }
 
 function getProductCode(item) {
+  // Primero intentar usar COD OLIMPO
+  if (item["COD OLIMPO"]) {
+    return item["COD OLIMPO"]
+  }
+
+  // Fallback por seguridad (no afecta nada)
   if (columnMapping.codigo && item[columnMapping.codigo]) {
     return item[columnMapping.codigo]
   }
+
   return item.CODIGO || item.CÓDIGO || item.ID || item.CODE || "Sin código"
 }
 
@@ -633,3 +640,4 @@ function hideDataLoadingOverlay() {
     setTimeout(() => loadingOverlay.remove(), 300)
   }
 }
+
