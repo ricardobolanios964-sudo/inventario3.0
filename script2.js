@@ -302,8 +302,8 @@ function displaySearchResults(results, query) {
         .replace(/[\u0300-\u036f]/g, "")
     }
 
-    const textNormalized = normalizeText(text)
-    const queryNormalized = normalizeText(query)
+    const textNormalized = normalizeText(text.toString())
+    const queryNormalized = normalizeText(query.toString())
 
     const index = textNormalized.indexOf(queryNormalized)
 
@@ -324,12 +324,26 @@ function displaySearchResults(results, query) {
       const highlightedCode = highlightText(code, query)
       const highlightedName = highlightText(name, query)
 
+      // 🔥 Detectar COD OLIMPO sin depender del nombre exacto
+      let rawOlimpo = ""
+
+      Object.keys(item).forEach((key) => {
+        if (key.toUpperCase().includes("COD") && key.toUpperCase().includes("OLIMPO")) {
+          rawOlimpo = (item[key] || "").toString().trim().toUpperCase()
+        }
+      })
+
+      const isInvalid = rawOlimpo === "#N/A" || rawOlimpo === ""
+
       return `
-            <div class="search-result-item" data-product='${JSON.stringify(item).replace(/'/g, "&#39;")}'>
-                <div class="result-code">${highlightedCode}</div>
-                <div class="result-name">${highlightedName}</div>
-            </div>
-        `
+        <div class="search-result-item ${isInvalid ? "invalid-product" : ""}" 
+             data-product='${JSON.stringify(item).replace(/'/g, "&#39;")}'
+             data-invalid="${isInvalid}">
+          <div class="result-code">${highlightedCode}</div>
+          <div class="result-name">${highlightedName}</div>
+          ${isInvalid ? `<div class="invalid-warning">Código no disponible</div>` : ""}
+        </div>
+      `
     })
     .join("")
 
@@ -337,6 +351,12 @@ function displaySearchResults(results, query) {
 
   document.querySelectorAll(".search-result-item").forEach((item) => {
     item.addEventListener("click", () => {
+
+      if (item.dataset.invalid === "true") {
+        showToast("Este producto no tiene COD OLIMPO válido", "error")
+        return
+      }
+
       const product = JSON.parse(item.dataset.product)
       selectProduct(product)
     })
@@ -640,4 +660,3 @@ function hideDataLoadingOverlay() {
     setTimeout(() => loadingOverlay.remove(), 300)
   }
 }
-
