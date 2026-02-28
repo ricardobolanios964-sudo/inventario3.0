@@ -1333,3 +1333,15 @@ body {
     padding-bottom: env(safe-area-inset-bottom);
   }
 }
+.invalid-product {
+  background-color: #ffe5e5;
+  border-left: 4px solid #ff0000;
+}
+
+.invalid-warning {
+  color: #ff0000;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+
